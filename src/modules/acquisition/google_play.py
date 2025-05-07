@@ -436,10 +436,15 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                 reviews = []
                 continuation_token = None
                 
-                # Loop to fetch all reviews
+                # Important: The Google Play scraper doesn't accept date parameters directly.
+                # Instead, we'll fetch reviews and filter them afterward
+                logger.info(f"Fetching reviews from Google Play and filtering by date range")
+                
+                # Loop to fetch reviews
                 while True:
                     try:
-                        # Wrap the call in a try block to catch date-related errors
+                        # The google-play-scraper doesn't take datetime parameters directly
+                        # So we'll fetch all and filter locally
                         result, continuation_token = gp_reviews(
                             app_id=app_id,
                             lang=lang,
@@ -448,20 +453,16 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                             count=100,  # Max batch size
                             continuation_token=continuation_token
                         )
-                    except (TypeError, ValueError) as e:
-                        # The date formatting issue happens here - try one more approach
-                        logger.error(f"Date error in Google Play API: {e}")
-                        logger.info("Switching to mock data due to date formatting issue")
-                        
-                        # Generate mock data instead
+                    except Exception as e:
+                        logger.error(f"Error in Google Play API call: {e}")
+                        # For real API errors, fall back to mock data
+                        logger.warning("API error - falling back to mock data")
                         max_reviews_override = os.environ.get("MAX_REVIEWS")
                         if max_reviews_override:
                             try:
                                 max_reviews = int(max_reviews_override)
                             except (ValueError, TypeError):
-                                logger.warning(f"Invalid MAX_REVIEWS in environment: {max_reviews_override}")
-                        
-                        # Generate mock reviews with the specified limit
+                                logger.warning(f"Invalid MAX_REVIEWS: {max_reviews_override}")
                         logger.info(f"Using MOCK DATA: Generating {max_reviews} fake reviews")
                         reviews = self._generate_mock_reviews(max_reviews or 10)
                         return self._convert_to_dataframe(reviews)
@@ -473,7 +474,12 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                     if start_date or end_date:
                         filtered_reviews = []
                         for review in result:
+                            # Convert timestamp to datetime
                             review_date = datetime.fromtimestamp(review["at"])
+                            
+                            # Log for debugging
+                            if len(filtered_reviews) == 0:
+                                logger.info(f"Sample review date: {review_date}, start_date: {start_date}, end_date: {end_date}")
                             
                             # Only apply filtering if dates are datetime objects
                             if start_date and isinstance(start_date, datetime):
@@ -487,10 +493,13 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                             filtered_reviews.append(review)
                         
                         reviews.extend(filtered_reviews)
+                        logger.info(f"Filtered reviews by date range: {len(filtered_reviews)} matching")
                     else:
                         reviews.extend(result)
+                        logger.info(f"No date filtering applied, added {len(result)} reviews")
                     
                     # Check if we have enough reviews or no more to fetch
+                    logger.info(f"Current review count: {len(reviews)}, max: {max_reviews}, continuation: {continuation_token is not None}")
                     if len(reviews) >= max_reviews or not continuation_token:
                         break
                 
