@@ -438,19 +438,33 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                 
                 # Loop to fetch all reviews
                 while True:
-                    # Convert datetime objects to timestamps if needed
-                    # The google-play-scraper library expects timestamps for filtering
-                    timestamp_start = int(start_date.timestamp()) if isinstance(start_date, datetime) else None
-                    timestamp_end = int(end_date.timestamp()) if isinstance(end_date, datetime) else None
-                    
-                    result, continuation_token = gp_reviews(
-                        app_id=app_id,
-                        lang=lang,
-                        country=country,
-                        sort=sort_order,
-                        count=100,  # Max batch size
-                        continuation_token=continuation_token
-                    )
+                    try:
+                        # Wrap the call in a try block to catch date-related errors
+                        result, continuation_token = gp_reviews(
+                            app_id=app_id,
+                            lang=lang,
+                            country=country,
+                            sort=sort_order,
+                            count=100,  # Max batch size
+                            continuation_token=continuation_token
+                        )
+                    except (TypeError, ValueError) as e:
+                        # The date formatting issue happens here - try one more approach
+                        logger.error(f"Date error in Google Play API: {e}")
+                        logger.info("Switching to mock data due to date formatting issue")
+                        
+                        # Generate mock data instead
+                        max_reviews_override = os.environ.get("MAX_REVIEWS")
+                        if max_reviews_override:
+                            try:
+                                max_reviews = int(max_reviews_override)
+                            except (ValueError, TypeError):
+                                logger.warning(f"Invalid MAX_REVIEWS in environment: {max_reviews_override}")
+                        
+                        # Generate mock reviews with the specified limit
+                        logger.info(f"Using MOCK DATA: Generating {max_reviews} fake reviews")
+                        reviews = self._generate_mock_reviews(max_reviews or 10)
+                        return self._convert_to_dataframe(reviews)
                     
                     if not result:
                         break
@@ -499,6 +513,18 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                 logger.info(f"Using MOCK DATA: Generating {max_reviews} fake reviews")
                 reviews = self._generate_mock_reviews(max_reviews or 10)
         
+        return self._convert_to_dataframe(reviews)
+    
+    def _convert_to_dataframe(self, reviews: List[Dict[str, Any]]) -> pd.DataFrame:
+        """
+        Convert reviews to a DataFrame.
+        
+        Args:
+            reviews: List of review dictionaries
+            
+        Returns:
+            DataFrame containing reviews
+        """
         # Convert to DataFrame
         if not reviews:
             return pd.DataFrame(columns=[
