@@ -1,0 +1,48 @@
+{
+  "app": {
+    "name": "app-reviews-ai",
+    "version": "0.1.0"
+  },
+  "acquisition": {
+    "app_id": "com.example.app",
+    "time_frame": {
+      "start_date": "1 year ago",
+      "end_date": "now"
+    },
+    "max_reviews": 10000
+  },
+  "storage": {
+    "db_type": "file",
+    "connection_string": null,
+    "file_path": "data/reviews.csv"
+  },
+  "preprocessing": {
+    "language": "en",
+    "remove_stopwords": true,
+    "lemmatize": true
+  },
+  "analytics": {
+    "sentiment_analyzer": "nltk_vader",
+    "topic_modeling": {
+      "method": "lda",
+      "num_topics": 10
+    }
+  },
+  "vector_db": {
+    "engine": "chroma",
+    "embedding_model": "openai",
+    "collection_name": "app_reviews",
+    "persist_directory": "data/vector_db"
+  },
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "temperature": 0.3,
+    "api_key": "YOUR_OPENAI_API_KEY_HERE"
+  },
+  "visualization": {
+    "theme": "dark",
+    "export_formats": ["png", "html"],
+    "output_directory": "reports/visualizations"
+  }
+}

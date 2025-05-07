@@ -1,0 +1,40 @@
+# Core dependencies
+pandas
+numpy
+python-dotenv
+
+# Data acquisition
+google-play-scraper
+requests
+
+# Data storage
+sqlalchemy
+pymongo
+
+# Data preprocessing
+nltk
+scikit-learn
+spacy
+sentence-transformers
+
+# Analytics
+matplotlib
+seaborn
+wordcloud
+plotly
+tqdm
+
+# Vector database
+chromadb
+qdrant-client
+
+# LLM integration
+openai
+langchain
+langchain-openai
+
+# Development & testing
+jupyter
+pytest
+black
+isort
