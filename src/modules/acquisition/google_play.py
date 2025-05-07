@@ -118,44 +118,71 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Google Play acquisition module: {e}")
     
-    def _parse_date(self, date_str: Optional[str]) -> Optional[datetime]:
+    def _parse_date(self, date_input: Optional[Union[str, datetime, int]]) -> Optional[datetime]:
         """
-        Parse date string to datetime object.
+        Parse date input to datetime object.
         
         Supports:
         - ISO format dates
         - Relative dates like "1 year ago", "6 months ago", "30 days ago"
         - "now" for current date
+        - Unix timestamps (integers)
+        - Datetime objects
         
         Args:
-            date_str: Date string to parse
+            date_input: Date input to parse
             
         Returns:
             Parsed datetime object or None if input is None
         """
-        if not date_str:
+        if not date_input:
             return None
             
+        # Log the input for debugging
+        logger.debug(f"Parsing date input: {date_input} (type: {type(date_input)})")
+            
         # If already a datetime object, return it
-        if isinstance(date_str, datetime):
-            return date_str
-        
-        # Convert to string if it's not already
-        if not isinstance(date_str, str):
+        if isinstance(date_input, datetime):
+            return date_input
+            
+        # If it's an integer or float, treat as Unix timestamp
+        if isinstance(date_input, (int, float)):
             try:
-                date_str = str(date_str)
-            except:
-                print(f"Warning: Could not convert date to string: {date_str}")
+                return datetime.fromtimestamp(date_input)
+            except (ValueError, OSError, OverflowError) as e:
+                logger.warning(f"Failed to parse timestamp {date_input}: {e}")
                 return None
         
+        # Convert to string if it's not already
+        if not isinstance(date_input, str):
+            try:
+                date_str = str(date_input)
+                logger.debug(f"Converted non-string date to string: {date_str}")
+            except Exception as e:
+                logger.warning(f"Could not convert date to string: {date_input}. Error: {e}")
+                return None
+        else:
+            date_str = date_input
+        
+        # Handle "now" keyword
         if date_str.lower() == "now":
             return datetime.now()
+            
+        # Try parsing as Unix timestamp (string representation of integer)
+        try:
+            if date_str.isdigit():
+                timestamp = int(date_str)
+                return datetime.fromtimestamp(timestamp)
+        except (ValueError, OSError, OverflowError) as e:
+            logger.debug(f"Not a valid timestamp string: {date_str}")
+            # Continue to other parsing methods
         
         # Try parsing as ISO format
         try:
             return datetime.fromisoformat(date_str)
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            logger.debug(f"Not an ISO format date: {date_str}")
+            # Continue to other parsing methods
         
         # Try parsing relative dates
         try:
@@ -175,12 +202,49 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                     return datetime.now() - timedelta(weeks=amount)
                 elif unit == "day":
                     return datetime.now() - timedelta(days=amount)
-        except (ValueError, IndexError):
-            pass
+                elif unit == "hour":
+                    return datetime.now() - timedelta(hours=amount)
+                elif unit == "minute":
+                    return datetime.now() - timedelta(minutes=amount)
+        except (ValueError, IndexError) as e:
+            logger.debug(f"Not a relative date: {date_str}")
+            # Continue to other parsing methods
         
         # If we can't parse it, log a warning and return None
-        logger.warning(f"Could not parse date: {date_str}")
+        logger.warning(f"Could not parse date: {date_str} (original input type: {type(date_input)})")
         return None
+        
+    def _convert_timestamp(self, timestamp) -> Optional[datetime]:
+        """
+        Convert various timestamp formats to datetime.
+        
+        Args:
+            timestamp: Timestamp in various formats (int, float, str)
+            
+        Returns:
+            Datetime object or None if conversion fails
+        """
+        if timestamp is None:
+            return None
+            
+        # If it's already a datetime, return it
+        if isinstance(timestamp, datetime):
+            return timestamp
+            
+        try:
+            # Try as integer/float (Unix timestamp)
+            if isinstance(timestamp, (int, float)):
+                return datetime.fromtimestamp(timestamp)
+                
+            # Try as string representation of timestamp
+            if isinstance(timestamp, str) and timestamp.isdigit():
+                return datetime.fromtimestamp(int(timestamp))
+                
+            # Otherwise parse using the regular date parser
+            return self._parse_date(timestamp)
+        except Exception as e:
+            logger.warning(f"Error converting timestamp {timestamp}: {e}")
+            return None
     
     def get_app_info(self, app_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -391,20 +455,39 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
         Returns:
             DataFrame containing reviews
         """
+        # Debug incoming parameters
+        logger.info("=== fetch_reviews called with parameters ===")
+        logger.info(f"app_id: {app_id or self._app_id}")
+        logger.info(f"start_date: {start_date} (type: {type(start_date)})")
+        logger.info(f"end_date: {end_date} (type: {type(end_date)})")
+        logger.info(f"max_reviews: {max_reviews or self._max_reviews}")
+        logger.info(f"use_mock: {use_mock}")
+        logger.info("=" * 40)
+        
         app_id = app_id or self._app_id
         if not app_id:
             raise ValueError("App ID is required")
         
         # Parse dates if they are strings
-        if isinstance(start_date, str):
-            start_date = self._parse_date(start_date)
-        elif start_date is None and self._start_date:
-            start_date = self._parse_date(self._start_date)
+        try:
+            if isinstance(start_date, str):
+                start_date = self._parse_date(start_date)
+            elif start_date is None and self._start_date:
+                start_date = self._parse_date(self._start_date)
+            logger.info(f"Using start_date: {start_date}")
+        except Exception as e:
+            logger.error(f"Error parsing start_date: {e}")
+            start_date = None
         
-        if isinstance(end_date, str):
-            end_date = self._parse_date(end_date)
-        elif end_date is None and self._end_date:
-            end_date = self._parse_date(self._end_date)
+        try:
+            if isinstance(end_date, str):
+                end_date = self._parse_date(end_date)
+            elif end_date is None and self._end_date:
+                end_date = self._parse_date(self._end_date)
+            logger.info(f"Using end_date: {end_date}")
+        except Exception as e:
+            logger.error(f"Error parsing end_date: {e}")
+            end_date = None
         
         max_reviews = max_reviews or self._max_reviews
         
@@ -443,8 +526,8 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                 # Loop to fetch reviews
                 while True:
                     try:
-                        # The google-play-scraper doesn't take datetime parameters directly
-                        # So we'll fetch all and filter locally
+                        # The google-play-scraper doesn't accept any date parameters
+                        # We'll fetch reviews and filter them locally afterward
                         result, continuation_token = gp_reviews(
                             app_id=app_id,
                             lang=lang,
@@ -474,23 +557,33 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                     if start_date or end_date:
                         filtered_reviews = []
                         for review in result:
-                            # Convert timestamp to datetime
-                            review_date = datetime.fromtimestamp(review["at"])
-                            
-                            # Log for debugging
-                            if len(filtered_reviews) == 0:
-                                logger.info(f"Sample review date: {review_date}, start_date: {start_date}, end_date: {end_date}")
-                            
-                            # Only apply filtering if dates are datetime objects
-                            if start_date and isinstance(start_date, datetime):
-                                if review_date < start_date:
+                            try:
+                                # Convert timestamp to datetime using helper method
+                                timestamp = review.get("at")
+                                review_date = self._convert_timestamp(timestamp)
+                                
+                                if review_date is None:
+                                    logger.warning(f"Could not convert review timestamp: {timestamp} for review ID: {review.get('reviewId', 'unknown')}")
                                     continue
-                            
-                            if end_date and isinstance(end_date, datetime):
-                                if review_date > end_date:
-                                    continue
-                            
-                            filtered_reviews.append(review)
+                                
+                                # Log for debugging
+                                if len(filtered_reviews) == 0:
+                                    logger.info(f"Sample review date: {review_date}, start_date: {start_date}, end_date: {end_date}")
+                                
+                                # Apply date filtering
+                                if start_date and isinstance(start_date, datetime):
+                                    if review_date < start_date:
+                                        continue
+                                
+                                if end_date and isinstance(end_date, datetime):
+                                    if review_date > end_date:
+                                        continue
+                                
+                                filtered_reviews.append(review)
+                                
+                            except Exception as e:
+                                logger.warning(f"Error processing review during date filtering: {e}")
+                                continue
                         
                         reviews.extend(filtered_reviews)
                         logger.info(f"Filtered reviews by date range: {len(filtered_reviews)} matching")
@@ -552,8 +645,26 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
             "reviewCreatedVersion": "version"
         })
         
-        # Convert timestamp to datetime
-        df["date"] = pd.to_datetime(df["timestamp"], unit="s")
+        # Convert timestamp to datetime with better error handling
+        try:
+            # First ensure the timestamp column contains integers
+            df["timestamp"] = df["timestamp"].apply(
+                lambda x: int(x) if pd.notnull(x) and (isinstance(x, (int, float)) or 
+                                                      (isinstance(x, str) and x.isdigit())) 
+                                 else None
+            )
+            
+            # Then convert to datetime
+            df["date"] = pd.to_datetime(df["timestamp"], unit="s", errors="coerce")
+            
+            # Log any null dates for debugging
+            null_dates = df["date"].isnull().sum()
+            if null_dates > 0:
+                logger.warning(f"Failed to convert {null_dates} timestamps to dates")
+        except Exception as e:
+            logger.error(f"Error converting timestamps to dates: {e}")
+            # Create empty date column as fallback
+            df["date"] = pd.NaT
         
         # Select and reorder columns to match interface
         columns = [
