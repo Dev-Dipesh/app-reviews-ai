@@ -419,7 +419,16 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
         if use_mock:
             logger.warning("Using MOCK DATA instead of real API call")
             # Make sure max_reviews is properly read from config or environment variable
-            reviews = self._generate_mock_reviews(int(os.environ.get("MAX_REVIEWS", max_reviews or 10)))
+            max_reviews_override = os.environ.get("MAX_REVIEWS")
+            if max_reviews_override:
+                try:
+                    max_reviews = int(max_reviews_override)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid MAX_REVIEWS in environment: {max_reviews_override}")
+                
+            # Generate mock reviews with the specified limit
+            logger.info(f"Using MOCK DATA: Generating {max_reviews} fake reviews")
+            reviews = self._generate_mock_reviews(max_reviews or 10)
         else:
             logger.info("Using REAL DATA from Google Play Store API")
             try:
@@ -429,6 +438,11 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                 
                 # Loop to fetch all reviews
                 while True:
+                    # Convert datetime objects to timestamps if needed
+                    # The google-play-scraper library expects timestamps for filtering
+                    timestamp_start = int(start_date.timestamp()) if isinstance(start_date, datetime) else None
+                    timestamp_end = int(end_date.timestamp()) if isinstance(end_date, datetime) else None
+                    
                     result, continuation_token = gp_reviews(
                         app_id=app_id,
                         lang=lang,
@@ -473,6 +487,16 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                 logger.error(f"Error fetching reviews: {e}")
                 logger.warning("Failed to get real data - falling back to MOCK DATA")
                 # Generate mock data if API fails
+                # Make sure to use the limited max_reviews value for mock data
+                max_reviews_override = os.environ.get("MAX_REVIEWS")
+                if max_reviews_override:
+                    try:
+                        max_reviews = int(max_reviews_override)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid MAX_REVIEWS in environment: {max_reviews_override}")
+                
+                # Generate mock reviews with the specified limit
+                logger.info(f"Using MOCK DATA: Generating {max_reviews} fake reviews")
                 reviews = self._generate_mock_reviews(max_reviews or 10)
         
         # Convert to DataFrame
