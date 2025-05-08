@@ -617,6 +617,66 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
         
         return self._convert_to_dataframe(reviews)
     
+    def _transform_review(self, review: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform a single review into the standardized format.
+        
+        Args:
+            review: Raw review dictionary from the API
+            
+        Returns:
+            Transformed review dictionary
+        """
+        # Transform keys to match interface
+        transformed = {
+            "review_id": review.get("reviewId", ""),
+            "author": review.get("userName", ""),
+            "timestamp": review.get("at", None),
+            "rating": review.get("score", 0),
+            "text": review.get("content", ""),
+            "version": review.get("reviewCreatedVersion", "")
+        }
+        
+        # Add additional fields that might be useful
+        if "thumbsUpCount" in review:
+            transformed["thumbsUpCount"] = review["thumbsUpCount"]
+        if "replyContent" in review:
+            transformed["replyContent"] = review["replyContent"]
+        if "repliedAt" in review:
+            transformed["repliedAt"] = review["repliedAt"]
+        
+        # Convert timestamp to datetime with better error handling
+        try:
+            # If timestamp is already a datetime object, use it directly
+            if isinstance(transformed["timestamp"], datetime):
+                transformed["date"] = pd.to_datetime(transformed["timestamp"])
+                logger.debug(f"'at' field was already a datetime object for review {transformed['review_id']}")
+            elif transformed["timestamp"] is not None:
+                if isinstance(transformed["timestamp"], (int, float)) or (
+                    isinstance(transformed["timestamp"], str) and transformed["timestamp"].isdigit()
+                ):
+                    # Convert to int if it's a string containing digits
+                    timestamp = int(transformed["timestamp"]) if isinstance(transformed["timestamp"], str) else transformed["timestamp"]
+                    transformed["date"] = pd.to_datetime(timestamp, unit='s', errors='coerce')
+                else:
+                    transformed["date"] = pd.to_datetime(transformed["timestamp"], errors='coerce')
+            else:
+                transformed["date"] = pd.NaT
+                
+            # If date is NaT and timeMillis exists, try using that
+            if (pd.isna(transformed.get("date")) and 
+                "timeMillis" in review and review["timeMillis"] is not None):
+                try:
+                    transformed["date"] = pd.to_datetime(review["timeMillis"], unit='ms', errors='coerce')
+                    logger.info(f"Used timeMillis as fallback for date for review {transformed['review_id']}")
+                except Exception as e:
+                    logger.warning(f"Failed to parse timeMillis: {e}")
+        except Exception as e:
+            logger.error(f"Error converting timestamp to date: {e}")
+            transformed["date"] = pd.NaT
+            
+        return transformed
+    
     def _convert_to_dataframe(self, reviews: List[Dict[str, Any]]) -> pd.DataFrame:
         """
         Convert reviews to a DataFrame.
@@ -633,38 +693,17 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
                 "review_id", "author", "date", "rating", "text", "version"
             ])
         
-        df = pd.DataFrame(reviews)
+        # Transform each review individually
+        transformed_reviews = [self._transform_review(review) for review in reviews]
         
-        # Rename and convert columns to match interface
-        df = df.rename(columns={
-            "reviewId": "review_id",
-            "userName": "author",
-            "at": "timestamp",
-            "score": "rating",
-            "content": "text",
-            "reviewCreatedVersion": "version"
-        })
+        # Create DataFrame from transformed reviews
+        df = pd.DataFrame(transformed_reviews)
         
-        # Convert timestamp to datetime with better error handling
-        try:
-            # First ensure the timestamp column contains integers
-            df["timestamp"] = df["timestamp"].apply(
-                lambda x: int(x) if pd.notnull(x) and (isinstance(x, (int, float)) or 
-                                                      (isinstance(x, str) and x.isdigit())) 
-                                 else None
-            )
-            
-            # Then convert to datetime
-            df["date"] = pd.to_datetime(df["timestamp"], unit="s", errors="coerce")
-            
-            # Log any null dates for debugging
+        # Log any null dates for debugging
+        if "date" in df.columns:
             null_dates = df["date"].isnull().sum()
             if null_dates > 0:
-                logger.warning(f"Failed to convert {null_dates} timestamps to dates")
-        except Exception as e:
-            logger.error(f"Error converting timestamps to dates: {e}")
-            # Create empty date column as fallback
-            df["date"] = pd.NaT
+                logger.warning(f"Found {null_dates} null dates in transformed reviews")
         
         # Select and reorder columns to match interface
         columns = [
