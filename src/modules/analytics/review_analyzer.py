@@ -338,7 +338,7 @@ class ReviewAnalyzer(AnalyticsInterface):
         data: pd.DataFrame, 
         date_column: str = "date",
         value_column: str = "rating", 
-        freq: str = "M",
+        freq: str = "ME",  # Changed from 'M' to 'ME' to avoid FutureWarning
         **kwargs
     ) -> pd.DataFrame:
         """
@@ -374,12 +374,27 @@ class ReviewAnalyzer(AnalyticsInterface):
         
         # Create trend analysis based on frequency
         try:
-            # For older versions of pandas, we need to use 'M' instead of 'ME'
-            # Let's just override any 'M'-containing frequency with 'M' for compatibility
-            if isinstance(freq, str) and 'M' in freq:
-                resampled_freq = 'M'
+            # Attempt to resample to the requested frequency
+            if freq == "auto":
+                # Try to determine a good frequency based on date range
+                date_range = (df[date_column].max() - df[date_column].min()).days
+                
+                if date_range > 730:  # More than 2 years
+                    resampled_freq = "Y"
+                elif date_range > 180:  # More than 6 months
+                    resampled_freq = "Q"
+                elif date_range > 60:  # More than 2 months
+                    resampled_freq = "ME"  # Month End frequency (was 'M')
+                elif date_range > 14:  # More than 2 weeks
+                    resampled_freq = "W"
+                else:  # Less than 2 weeks
+                    resampled_freq = "D"
             else:
-                resampled_freq = freq
+                # Update 'M' to 'ME' if provided by user to avoid FutureWarning
+                if freq == 'M':
+                    resampled_freq = 'ME'  # Use Month End frequency instead of deprecated 'M'
+                else:
+                    resampled_freq = freq
             print(f"Using resampled frequency: {resampled_freq}")
             
             # Average value by time period

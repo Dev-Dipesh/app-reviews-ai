@@ -53,12 +53,16 @@ class FileStorage(StorageInterface):
             
             # Still no file_path, use default
             if not self._file_path:
-                self._file_path = "data/reviews.csv"  # Default path
+                # Use absolute path for default
+                project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+                self._file_path = os.path.join(project_root, "data", "reviews.csv")  # Default path
                 print(f"Using default file path: {self._file_path}")
         
-        # Ensure file_path has a value
+        # Ensure file_path has a value and is absolute
         if not self._file_path:
-            self._file_path = "data/reviews.csv"
+            # Use absolute path for default
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+            self._file_path = os.path.join(project_root, "data", "reviews.csv")
         
         # Ensure directory exists
         os.makedirs(os.path.dirname(self._file_path), exist_ok=True)
@@ -73,9 +77,11 @@ class FileStorage(StorageInterface):
             RuntimeError: If storage initialization fails
         """
         try:
-            # Ensure file_path has a value (this is a second check as a safeguard)
+            # Ensure file_path has a value and is absolute (this is a second check as a safeguard)
             if not self._file_path:
-                self._file_path = "data/reviews.csv"
+                # Use absolute path for default
+                project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+                self._file_path = os.path.join(project_root, "data", "reviews.csv")
                 print(f"Initialize: Using default file path: {self._file_path}")
             
             # Create directory if it doesn't exist

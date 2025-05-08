@@ -27,12 +27,17 @@ from src.modules.visualization.data_visualizer import DataVisualizer
 
 
 # Configure logging
+# Use absolute path for log file to avoid issues when running from different directories
+log_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logs", "app_reviews.log"))
+# Create logs directory if it doesn't exist
+os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/app_reviews.log", mode="a")
+        logging.FileHandler(log_file, mode="a")
     ]
 )
 
@@ -55,10 +60,11 @@ class ReviewAnalysisRunner:
         if config_path:
             config._load_from_file(config_path)
         
-        # Create data directory if it doesn't exist
-        os.makedirs("data", exist_ok=True)
-        os.makedirs("logs", exist_ok=True)
-        os.makedirs("reports", exist_ok=True)
+        # Create all required directories using absolute paths
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        os.makedirs(os.path.join(project_root, "data"), exist_ok=True)
+        os.makedirs(os.path.join(project_root, "logs"), exist_ok=True)
+        os.makedirs(os.path.join(project_root, "reports"), exist_ok=True)
         
         # Initialize modules
         self.acquisition = None

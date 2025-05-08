@@ -90,3 +90,6 @@ desktop.ini
 
 # Exception for config template
 !config/config.json.template
+
+# Ignore Claude
+CLAUDE.md
