@@ -435,7 +435,7 @@ class GooglePlayReviewAcquisition(ReviewAcquisitionInterface):
         end_date: Optional[Union[str, datetime]] = None,
         max_reviews: Optional[int] = None,
         lang: str = "en",
-        country: str = "us",
+        country: str = "in",
         sort_order: Sort = Sort.NEWEST,
         use_mock: Optional[bool] = None
     ) -> pd.DataFrame:
